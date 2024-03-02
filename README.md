@@ -18,6 +18,8 @@ To use this project, you need:
 
 - Python 3.x
 - A `keys.json` file in the same directory as your Python script. This file should contain your VirusTotal API key in the following format:
+- requests
+- plyr
 
 ```json
 {
