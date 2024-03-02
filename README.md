@@ -1,4 +1,4 @@
-# System Monitor and Cleaner
+# HealthUp2Date
 
 This project is a collection of Python scripts that work together to monitor, analyze, and manage files in a system. It is especially useful for users who frequently download files from the internet and want to ensure they are not malicious.
 
