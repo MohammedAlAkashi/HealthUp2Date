@@ -20,7 +20,7 @@ RUN_DIRECTORY = os.getcwd()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def getApiKey():
+def get_api_key():
     with open('keys.json', "r") as json_file:
         data = json.load(json_file)
         json_file.close()
@@ -40,14 +40,14 @@ def calculate_md5(file_path):
         return None
 
 
-def getIndexOfFile(file_path, files):
+def get_index_of_file(file_path, files):
     for i in range(len(files)):
         if files[i][0] == file_path:
             return i
     return -1
 
 
-def getIndexOfHash(hash, files):
+def get_index_of_hash(hash, files):
     for i in range(len(files)):
         if files[i][1] == hash:
             return i
@@ -84,7 +84,7 @@ def monitor_directory(directory):
             if os.path.isfile(file_path):
                 # If the file is not already in the list, it's a new file
                 if file_path not in [item for sublist in files for item in sublist]:  # check if file is in the 2d array
-                    index = getIndexOfHash(hash, files)
+                    index = get_index_of_hash(hash, files)
                     if index != -1:
                         logging.info(f"File name has been modified: {file_path}")
                         files[index][0] = file_path
@@ -94,17 +94,17 @@ def monitor_directory(directory):
                         logging.info(f"New file detected: {file_path}")
                         files.append([file_path, hash])
 
-                        thread = threading.Thread(target=submitRequest, args=(file_path,))
+                        thread = threading.Thread(target=submit_request, args=(file_path,))
                         thread.start()
 
                 if hash not in [item for sublist in files for item in sublist]:
                     logging.info(f"File has been modified: {file_path}")
-                    index = getIndexOfFile(file_path, files)
+                    index = get_index_of_file(file_path, files)
                     if index != -1:
                         files[index][1] = hash
                         files.append([file_path, hash])
 
-                        thread = threading.Thread(target=submitRequest, args=(file_path,))
+                        thread = threading.Thread(target=submit_request, args=(file_path,))
                         thread.start()
 
         time.sleep(1)  # Wait for 1 second
@@ -189,7 +189,7 @@ def generate_text_file(**kwargs):
     return "failed"
 
 
-def sendNotification(**kwargs):
+def send_notification(**kwargs):
     if kwargs['title'] == 'SAFE FILE':
         notification.notify(
             title=kwargs['title'],
@@ -242,9 +242,9 @@ def createReport(array, description):
         print(f"Error opening file with Notepad: {e}")
 
 
-def sendNotificationThread(**kwargs):
+def send_notification_thread(**kwargs):
     try:
-        notificationThread = threading.Thread(target=sendNotification, kwargs=kwargs)
+        notificationThread = threading.Thread(target=send_notification, kwargs=kwargs)
         notificationThread.start()
         notificationThread.join()
     except Exception as e:
@@ -340,7 +340,7 @@ def getResults(json_data):
     if last_analysis_stats:
         if int(last_analysis_stats.get('malicious', 0)) > 0:
             try:
-                sendNotificationThread(
+                send_notification_thread(
                     title='POSSIBLE VIRUS DETECTED',
                     desc=f'{file_name} is a possible virus that you have downloaded, proceed with upmost caution',
                     array=results,
@@ -350,21 +350,21 @@ def getResults(json_data):
                 logging.error(f"Error occurred while sending notification: {e}")
 
         if int(last_analysis_stats.get('suspicious', 0)) > 0:
-            sendNotificationThread(
+            send_notification_thread(
                 title='SUSPICIOUS FILE',
                 desc=f'{file_name} is a suspicious file that you have downloaded, proceed with caution',
                 array=results,
                 icon='icons/warning.ico'
             )
         else:
-            sendNotificationThread(
+            send_notification_thread(
                 title='SAFE FILE',
                 desc=f'{file_name} is a safe file that you have downloaded',
                 array=results,
                 icon='icons/safe.ico'
             )
 
-def submitRequest(file_path):
+def submit_request(file_path):
     logging.info("getting hash")
     global VIRUS_TOTAL_API_KEY, total_votes, REPORT, DESCRIPTION
     identifier = calculate_md5(file_path)
@@ -389,7 +389,7 @@ def submitRequest(file_path):
 
 def start():
     global VIRUS_TOTAL_API_KEY
-    keys = getApiKey()
+    keys = get_api_key()
 
     if keys:
         virus_total = keys.get('virus_total')
