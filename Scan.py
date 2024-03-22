@@ -54,6 +54,7 @@ def get_report(link, file_path):
         "x-apikey": VIRUS_TOTAL_API_KEY
     }
     loop = True
+    queued = False
     while loop:
         req = requests.get(link, headers=headers)
         data = req.json()
@@ -66,8 +67,10 @@ def get_report(link, file_path):
             data = req.json()
             get_results(data, file_path, id)
         elif status == 'queued':
-            logging.info("Scan is queued, waiting...")
-            time.sleep(15)
+            if not queued:
+                queued = True
+                logging.info("Scan is queued, waiting...")
+            time.sleep(5)
         elif status == 'in-progress':
             logging.info("Scanning in progress, waiting...")
             time.sleep(5)
@@ -76,26 +79,84 @@ def get_report(link, file_path):
             time.sleep(30)
 
 
-def uploadFile(file_path):
+def upload_file(file_path):
     logging.info("Uploading file...")
-    url = "https://www.virustotal.com/api/v3/files"
-    file_name = os.path.basename(file_path)
-    mime_type = mimetypes.guess_type(file_path)
-    files = {
-        "file": (file_name, open(file_path, "rb"), mime_type)
-    }
-    headers = {
-        "accept": "application/json",
-        "x-apikey": VIRUS_TOTAL_API_KEY
-    }
 
-    response = requests.post(url, files=files, headers=headers)
-    json_data = response.json()
-    link = json_data.get('data', {}).get('links', {}).get('self')
+    size_bytes = os.path.getsize(file_path)
+    kb = size_bytes / 1024
+    mb = kb / 1024
 
-    if link:
-        thread = threading.Thread(target=get_report, args=(link, file_path,))
-        thread.start()
+    if mb < 32:
+        logging.info(f"File size: {mb} MB")
+
+        url = "https://www.virustotal.com/api/v3/files"
+        file_name = os.path.basename(file_path)
+        mime_type = mimetypes.guess_type(file_path)
+        files = {
+            "file": (file_name, open(file_path, "rb"), mime_type)
+        }
+        headers = {
+            "accept": "application/json",
+            "x-apikey": VIRUS_TOTAL_API_KEY
+        }
+
+        response = requests.post(url, files=files, headers=headers)
+        json_data = response.json()
+        link = None
+
+        if (response.status_code == 200):
+            logging.info("File uploaded successfully")
+            try:
+                link = json_data.get('data', {}).get('links', {}).get('self')
+            except Exception as e:
+                print(f"{e}")
+
+            if link:
+                thread = threading.Thread(target=get_report, args=(link, file_path,))
+                thread.start()
+
+        elif (response.status_code == 401):
+            logging.critical("Unauthorized: Invalid API key / X-Apikey header is missing")
+            exit(1)
+
+    else:
+        logging.info(f"File size: {mb} MB")
+        logging.info("File size exceeds 32 MB, using secondary upload")
+
+        url = "https://www.virustotal.com/api/v3/files/upload_url"
+        headers = {
+            "accept": "application/json",
+            "x-apikey": VIRUS_TOTAL_API_KEY
+        }
+
+        response = requests.get(url, headers=headers)
+        json_data = response.json()
+        upload_url = json_data.get('data', {})
+
+        file_name = os.path.basename(file_path)
+        mime_type = mimetypes.guess_type(file_path)
+        files = {
+            "file": (file_name, open(file_path, "rb"), mime_type)
+        }
+
+        response = requests.post(upload_url, files=files, headers=headers)
+        json_data = response.json()
+        link = None
+
+        if response.status_code == 200:
+            logging.info("File uploaded successfully")
+            try:
+                link = json_data.get('data', {}).get('links', {}).get('self')
+            except Exception as e:
+                print(f"{e}")
+
+            if link:
+                thread = threading.Thread(target=get_report, args=(link, file_path,))
+                thread.start()
+
+        elif response.status_code == 401:
+            logging.critical("Unauthorized: Invalid API key / X-Apikey header is missing")
+            exit(1)
 
 
 def get_results(json_data, file_path, id):
@@ -111,7 +172,7 @@ def get_results(json_data, file_path, id):
         ai_description = json_data['data']['attributes']['crowdsourced_ai_results']
         results.append(['ai_description', ai_description])
     except Exception as e:
-        logging.error(f"Error occurred while processing JSON data: {e}")
+        pass
 
     try:
         total_votes = json_data['data']['attributes']['total_votes']
@@ -143,7 +204,7 @@ def get_results(json_data, file_path, id):
             except Exception as e:
                 logging.error(f"Error occurred while sending notification: {e}")
 
-        if int(last_analysis_stats.get('suspicious', 0)) > 0:
+        elif int(last_analysis_stats.get('suspicious', 0)) > 0:
             logging.warning(f"SUSPICIOUS FILE: {file_name} is a suspicious file, proceed with caution")
             logging.warning(f"Details: https://www.virustotal.com/gui/file/{id}")
         else:
@@ -169,7 +230,7 @@ def submit_request(file_path):
     error_code = json_data.get('error', {}).get('code')
     if error_code:
         logging.info(f"Hash not found on VirusTotal: {file_path}")
-        uploadFile(file_path)
+        upload_file(file_path)
         return
     id = json_data['data']['links']['self']
     get_results(json_data, file_path, id)
@@ -183,10 +244,13 @@ def start(path):
         virus_total = keys.get('virus_total')
         if virus_total:
             VIRUS_TOTAL_API_KEY = virus_total
-
+        else:
+            logging.error("VirusTotal API key not found")
+            logging.error("Please add your API key using --vkey")
+            exit(1)
     else:
-        logging.error("API key not found")
-        return
+        logging.error("API key file not found")
+        exit(1)
 
 
 if __name__ == '__main__':
@@ -204,6 +268,7 @@ if __name__ == '__main__':
                     logging.info("Installing modules...")
                     logging.info("Installing requests...")
                     os.system("pip install requests")
+    
     except (json.JSONDecodeError, FileNotFoundError) as e:
         logging.error("File not found")
         logging.info("Creating file...")
